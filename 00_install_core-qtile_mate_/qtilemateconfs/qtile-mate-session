@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# 1. Start MATE Settings Daemon (Handles themes, fonts, wallpaper, and icons)
+if [ -x /usr/lib/mate-settings-daemon/mate-settings-daemon ]; then
+    /usr/lib/mate-settings-daemon/mate-settings-daemon &
+elif [ -x /usr/lib/x86_64-linux-gnu/mate-settings-daemon/mate-settings-daemon ]; then
+    /usr/lib/x86_64-linux-gnu/mate-settings-daemon/mate-settings-daemon &
+else
+    mate-settings-daemon &
+fi
+
+# 2. Start MATE Applets & Systems Tools
+mate-power-manager &
+mate-volume-control-applet &
+/usr/lib/mate-notification-daemon/mate-notification-daemon &
+
+# 3. Optional: Polkit authentication agent for MATE
+if [ -x /usr/lib/mate-polkit/mate-polkit-authentication-agent-1 ]; then
+    /usr/lib/mate-polkit/mate-polkit-authentication-agent-1 &
+fi
+
+# 4. Launch Qtile Window Manager
+exec qtile start

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Layout menu for Qtile using rofi
+# Allows selecting and switching to different layouts
+
+export PATH="$HOME/.local/bin:$PATH"
+
+layouts=(
+    "MonadTall"
+    "BSP"
+    "Columns"
+    "Max"
+    "Floating"
+    "Zoomy"
+)
+
+# Capture current group before rofi opens
+current_group=$(qtile cmd-obj -o group -f info | python3 -c "import sys,ast; print(ast.literal_eval(sys.stdin.read())['name'])" 2>/dev/null)
+
+# Show menu
+chosen=$(printf '%s\n' "${layouts[@]}" | rofi -dmenu -i -p "Select Layout" -theme ~/.config/qtile/rofi/config.rasi)
+
+[ -z "$chosen" ] && exit 0
+
+target=$(echo "$chosen" | tr '[:upper:]' '[:lower:]')
+
+qtile cmd-obj -o group "$current_group" -f setlayout -a "$target"
+notify-send "Layout" "$chosen" -t 1500 -u low

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Qtile MATE
+Comment=Qtile Window Manager with MATE Components
+Exec=/usr/local/bin/qtile-mate-session
+Type=Application
+DesktopNames=MATE
+Keywords=wm;tiling;window;manager;mate;

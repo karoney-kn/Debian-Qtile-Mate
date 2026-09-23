@@ -1,0 +1,10 @@
+* {
+    bg:        #160B00;
+    fg:        #DE7B1B;
+    accent:    #FF8E1F;
+    urgent:    #A35100;
+    entry-fg:  #C26100;
+    prompt-fg: #FF7F00;
+
+    background-color: @bg;
+}

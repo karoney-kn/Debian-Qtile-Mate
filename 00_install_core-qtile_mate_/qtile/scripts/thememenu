@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# thememenu — qtile theme switcher.
+# Reads themes from ~/.config/qtile/themes/<name>/ and swaps the active
+# colors, kitty/GTK names, dunst colors, wallpaper. Then restarts qtile.
+
+set -u
+
+export PATH="$HOME/.local/bin:$PATH"
+
+QTILE_DIR="$HOME/.config/qtile"
+THEMES_DIR="$QTILE_DIR/themes"
+
+CONFIG="$QTILE_DIR/config.py"
+AUTOSTART="$QTILE_DIR/scripts/autostart.sh"
+DUNSTRC="$QTILE_DIR/dunst/dunstrc"
+ROFI_DIR="$QTILE_DIR/rofi"
+
+GTK3_CONF="$HOME/.config/gtk-3.0/settings.ini"
+XSETTINGSD_CONF="$HOME/.xsettingsd"
+WALLPAPER_DIR="$QTILE_DIR/wallpaper"
+
+ROFI_THEME="$ROFI_DIR/config.rasi"
+
+# --- helpers ---
+
+# cfg_get FILE KEY — print the value of `key = value` lines (trims whitespace).
+cfg_get() {
+    awk -v k="$2" '
+        $0 !~ /^[[:space:]]*#/ {
+            n = index($0, "=")
+            if (n > 0) {
+                key = substr($0, 1, n-1); val = substr($0, n+1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+                if (key == k) { print val; exit }
+            }
+        }' "$1"
+}
+
+notify() { notify-send -a "Theme" -u "${2:-normal}" -t "${3:-2000}" "Theme" "$1"; }
+
+# --- main ---
+
+# The active theme is whichever theme function config.py calls — no state file.
+current=$(grep -oP '= \K\w+(?=\(\))' "$CONFIG" 2>/dev/null || echo "github_dark")
+
+# Picker shows each theme's display name; map back to its directory.
+declare -A name_to_dir
+menu=""
+for d in "$THEMES_DIR"/*/; do
+    [ -f "$d/theme.conf" ] || continue
+    t=$(basename "$d")
+    display=$(cfg_get "$d/theme.conf" name)
+    display=${display:-$t}
+    name_to_dir["$display"]="$t"
+    menu+="$display"$'\n'
+done
+
+if [ "${1:-}" ]; then
+    target="$1"
+else
+    chosen=$(printf '%s' "$menu" | sort | \
+        rofi -dmenu -i -p "Theme ($current)" -theme "$ROFI_THEME")
+    [ -z "$chosen" ] && exit 0
+    target="${name_to_dir[$chosen]:-$chosen}"
+fi
+
+THEME_DIR="$THEMES_DIR/$target"
+[ -d "$THEME_DIR" ] || { notify "Missing theme: $target" critical; exit 1; }
+
+CONF="$THEME_DIR/theme.conf"
+[ -r "$CONF" ] || { notify "Missing $CONF" critical; exit 1; }
+
+display_name=$(cfg_get "$CONF" name)
+display_name=${display_name:-$target}
+
+if [ "$current" = "$target" ]; then
+    notify "Already using $display_name" low 1500
+    exit 0
+fi
+
+# 1. Swap the theme function call in config.py; the restart below re-reads it.
+sed -i "s/= ${current}()/= ${target}()/" "$CONFIG"
+cp "$THEME_DIR/colors.rasi" "$ROFI_DIR/colors.rasi"
+
+# 2. Kitty — apply the named scheme from kitty's bundled iTerm2/Gogh collection
+#    (or a custom theme in ~/.config/kitty/themes/). The kitten writes
+#    current-theme.conf, updates kitty.conf's theme block, and SIGUSR1-reloads
+#    any running windows. Falls back to the manifest's `ghostty` name, since
+#    kitty's collection uses the same iTerm2 naming.
+kitty_theme=$(cfg_get "$CONF" kitty)
+[ -z "$kitty_theme" ] && kitty_theme=$(cfg_get "$CONF" ghostty)
+if [ -n "$kitty_theme" ] && command -v kitty >/dev/null 2>&1; then
+    kitty +kitten themes --cache-age=-1 --reload-in=all "$kitty_theme" </dev/null >/dev/null 2>&1 || true
+fi
+
+# 3. GTK + icons.
+gtk=$(cfg_get "$CONF" gtk)
+icons=$(cfg_get "$CONF" icons)
+if [ -f "$GTK3_CONF" ]; then
+    [ -n "$gtk" ]   && sed -i "s|^gtk-theme-name=.*|gtk-theme-name=${gtk}|"           "$GTK3_CONF"
+    [ -n "$icons" ] && sed -i "s|^gtk-icon-theme-name=.*|gtk-icon-theme-name=${icons}|" "$GTK3_CONF"
+fi
+if [ -f "$XSETTINGSD_CONF" ]; then
+    [ -n "$gtk" ]   && sed -i "s|^Net/ThemeName .*|Net/ThemeName \"${gtk}\"|"             "$XSETTINGSD_CONF"
+    [ -n "$icons" ] && sed -i "s|^Net/IconThemeName .*|Net/IconThemeName \"${icons}\"|"   "$XSETTINGSD_CONF"
+    killall xsettingsd 2>/dev/null || true
+    xsettingsd >/dev/null 2>&1 &
+fi
+
+# 4. Wallpaper.
+wp=$(cfg_get "$CONF" wallpaper)
+if [ -n "$wp" ] && [ -f "$WALLPAPER_DIR/$wp" ]; then
+    feh --bg-fill "$WALLPAPER_DIR/$wp"
+    sed -i "s|feh --bg-fill.*|feh --bg-fill $WALLPAPER_DIR/$wp \&|" "$AUTOSTART" 2>/dev/null
+fi
+
+# 5. Dunst — replace the quoted hex on each `# THEME: dunst_<key>` line.
+for k in frame_global bg_low fg_low frame_low highlight_low \
+         bg_normal fg_normal frame_normal highlight_normal \
+         bg_critical fg_critical frame_critical highlight_critical; do
+    v=$(cfg_get "$CONF" "dunst_$k")
+    [ -n "$v" ] && sed -i "/# THEME: dunst_$k\$/s/\"#[0-9a-fA-F]*\"/\"$v\"/" "$DUNSTRC"
+done
+
+# 6. Restart dunst with the new colors, notify, then restart qtile last so it
+#    re-reads config.py with the new theme function.
+pkill -x dunst 2>/dev/null || true
+dunst -config "$DUNSTRC" >/dev/null 2>&1 &
+sleep 0.4
+notify "Switched to $display_name"
+qtile cmd-obj -o cmd -f restart

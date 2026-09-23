@@ -1,0 +1,97 @@
+#!/bin/bash
+
+CONFIG="$HOME/.config/qtile/config.py"
+THEME="$HOME/.config/qtile/rofi/keybinds.rasi"
+
+# Pull accent color from the active theme (first #hex inside `window { }`)
+ACCENT=$(awk '/^window[[:space:]]*\{/,/^\}/' "$THEME" | grep -oE '#[0-9a-fA-F]{6}' | head -1)
+ACCENT=${ACCENT:-#ff8f40}
+
+rows=$(python3 - "$CONFIG" "$ACCENT" <<'PY'
+import re, sys, html
+
+config_path, accent = sys.argv[1], sys.argv[2]
+
+MOD_MAP = {"mod": "Super", "mod1": "Alt", "shift": "Shift", "control": "Ctrl"}
+
+section_re = re.compile(r'^\s*#\s*===\s+(.+?)\s+===\s*$')
+key_re     = re.compile(r'^\s*Key\(')
+# Capture modifier list, key, and desc— Key() blocks may span lines
+# so we collapse a full block before parsing.
+mods_re = re.compile(r'Key\(\s*\[([^\]]*)\]\s*,\s*"([^"]+)"')
+desc_re = re.compile(r'desc\s*=\s*"([^"]+)"')
+
+with open(config_path, encoding="utf-8") as f:
+    lines = f.readlines()
+
+current_section = None
+sections = {}
+order = []
+buffer = ""
+in_key = False
+paren_depth = 0
+
+def flush(buf):
+    global current_section
+    if not current_section:
+        return
+    m = mods_re.search(buf)
+    d = desc_re.search(buf)
+    if not (m and d):
+        return
+    mods_raw = m.group(1).strip()
+    key = m.group(2)
+    desc = d.group(1)
+
+    mod_parts = []
+    for piece in [p.strip().strip('"') for p in mods_raw.split(",") if p.strip()]:
+        mod_parts.append(MOD_MAP.get(piece, piece))
+    label = " + ".join(mod_parts + [key]) if mod_parts else key
+    sections[current_section].append((label, desc))
+
+for raw in lines:
+    stripped = raw.rstrip("\n")
+
+    if not in_key:
+        # Section marker
+        sm = section_re.match(stripped)
+        if sm:
+            name = sm.group(1)
+            current_section = name
+            if name not in sections:
+                sections[name] = []
+                order.append(name)
+            continue
+
+        # Start of a Key() — only active (uncommented) lines
+        if key_re.match(stripped):
+            buffer = stripped
+            paren_depth = buffer.count("(") - buffer.count(")")
+            if paren_depth <= 0:
+                flush(buffer)
+                buffer = ""
+            else:
+                in_key = True
+    else:
+        buffer += " " + stripped.strip()
+        paren_depth += stripped.count("(") - stripped.count(")")
+        if paren_depth <= 0:
+            flush(buffer)
+            buffer = ""
+            in_key = False
+
+def esc(s):
+    return html.escape(s, quote=False)
+
+for name in order:
+    entries = sections[name]
+    if not entries:
+        continue
+    print(f'<span size="large" weight="bold" foreground="{accent}">── {esc(name)} ──</span>')
+    for label, desc in entries:
+        print(f'<b>{esc(label):<30}</b>  {esc(desc)}')
+PY
+)
+
+echo "$rows" | rofi -dmenu -markup-rows -i -p "Keybindings" \
+    -line-padding 4 -hide-scrollbar -theme "$THEME"
