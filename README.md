@@ -43,10 +43,6 @@ chmod +x install.sh
 ./install.sh
 ```
 
-### <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147593-764c5f00-7dc4-11ea-9ca2-f2569260928f.png">
-#### <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147594-76e4f580-7dc4-11ea-9f2c-56376bd9e6fa.png">
-
-### <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147600-777d8c00-7dc4-11ea-9e01-f3d072fa8961.png">
 <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/81058996-de77f780-8ecf-11ea-9ec0-aa089c637c8a.png">
 
 &nbsp; 
