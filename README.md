@@ -1,6 +1,6 @@
 # Debian-Qtile-Mate Starter Kit for Debian 12/13
-<img align="left"  src="https://user-images.githubusercontent.com/32820131/79635263-47d9d580-8170-11ea-87b1-943144be83d7.png" width="90"> Openbox is a beautiful and lightweight window 
-A complete Debian-Qtile-Mate  setup script for Debian-based systems.
+<img align="left"  src="https://user-images.githubusercontent.com/32820131/79635263-47d9d580-8170-11ea-87b1-943144be83d7.png" width="90"> 
+This is Qtile-Mate setup script for Debian-based systems.
 Features dynamic tiling layouts, powerful keybindings, a unified theme switcher, and a polished desktop experience — ready to roll out of the box.
 
 
@@ -37,15 +37,17 @@ The main script `install` can exec all scripts or only a select list:
 ## 🚀 Quick Start
 
 ```bash
-git clone https://justaguy.dev/drew/qtile-setup.git
-cd qtile-setup
+git clone https://github.com/karoney-kn/Debian-Qtile-Mate.git
+cd Debian-Qtile-Mate
 chmod +x install.sh
 ./install.sh
 ```
 
-<img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147593-764c5f00-7dc4-11ea-9ca2-f2569260928f.png"> <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147594-76e4f580-7dc4-11ea-9f2c-56376bd9e6fa.png">
+### <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147593-764c5f00-7dc4-11ea-9ca2-f2569260928f.png">
+#### <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147594-76e4f580-7dc4-11ea-9f2c-56376bd9e6fa.png">
 
-<img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147600-777d8c00-7dc4-11ea-9e01-f3d072fa8961.png"> <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/81058996-de77f780-8ecf-11ea-9ec0-aa089c637c8a.png">
+### <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/79147600-777d8c00-7dc4-11ea-9e01-f3d072fa8961.png">
+<img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/81058996-de77f780-8ecf-11ea-9ec0-aa089c637c8a.png">
 
 &nbsp; 
 ## Install
@@ -67,11 +69,11 @@ chmod +x install.sh
 $ ./install -h
 Exec a set of scripts
 Usage: install [-l] [-a <actions>] [-y] [-d] [-h]
-   -l			Only list actions 
-   -a <actions>	Filter selected actions by number range or text pattern (comma separated)
-   -y			Auto-answer yes to all actions
-   -d			Auto-answer default to all actions
-   -h			Show this help
+   -l     Only list actions 
+   -a <actions> Filter selected actions by number range or text pattern (comma separated)
+   -y     Auto-answer yes to all actions
+   -d     Auto-answer default to all actions
+   -h     Show this help
 
 
 # Exec all actions interactively:
@@ -236,7 +238,3 @@ Cycle layouts with `Super + Tab` or pick one from the layout menu with `Super + 
 ## Lincense
 Debian-Qtile-Mate license is [GPLv3](LICENSE)
 
-## Contact
-My name is Leonardo Marco. I'm sysadmin teacher in [CIFP Carlos III](https://cifpcarlos3.es/), Cartagena, Murcia (Spain).
-
-You can email me for suggestions, contributions, debian-openbox script help or share your feelings: labadmin@leonardomarco.com
