@@ -350,8 +350,6 @@ function main() {
 
 	# CHECKS
 	if [ ! "$list" ]; then
-		# Check root privileges
-		[ "$(id -u)" -ne 0 ] && error_info "Administrative privileges needed" 1
 
 		# Check debian version
 		if ! check_os_version; then		
