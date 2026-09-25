@@ -28,14 +28,6 @@ die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
 warn() { echo -e "${YELLOW}WARNING: $*${NC}" >&2; }
 msg() { echo -e "${CYAN}$*${NC}"; }
 
-# Helper function: tries running command normally, falls back to sudo if permissions fail
-sudo_exec() {
-    if ! "$@" 2>/dev/null; then
-        echo -e "${YELLOW}Elevated privileges required for: $*${NC}"
-        sudo "$@"
-    fi
-}
-
 # Command line options
 ONLY_CONFIG=false
 
@@ -49,7 +41,7 @@ while [[ $# -gt 0 ]]; do
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo "  --only-config      Only copy config files (skip packages and external tools)"
-            echo "  --help             Show this help message"
+            echo "  --help            Show this help message"
             exit 0
             ;;
         *)
@@ -94,7 +86,7 @@ PACKAGES=(
     qtile
     python3-psutil
 
-    # Mate Desktop
+    #Mate Desktop
     mate-desktop-environment-core
     mate-power-manager mate-media mate-polkit mate-calc mate-utils
     mate-terminal mate-control-center mate-system-monitor caja pluma engrampa eom atril
@@ -126,21 +118,22 @@ PACKAGES=(
     gparted numlockx cpu-x dnsutils whois tree btop bat brightnessctl
 )
 
+
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Updating package cache..."
-    sudo_exec apt-get update && sudo_exec apt-get upgrade -y
+    sudo apt-get update && sudo apt-get upgrade -y
 
     msg "Installing package array..."
-    sudo_exec apt-get install -y "${PACKAGES[@]}" || die "Package installation failed"
+    sudo apt-get install -y "${PACKAGES[@]}" || die "Package installation failed"
 
     # Disable latency-inducing background services
-    sudo_exec systemctl disable NetworkManager-wait-online.service
-    sudo_exec systemctl enable lightdm
+    sudo systemctl disable NetworkManager-wait-online.service
+    sudo systemctl enable lightdm
 else
     msg "Skipping package installation (--only-config mode activated)"
 fi
 
-# Initialize standard XDG directories (Runs completely unprivileged in user $HOME)
+# Initialize standard XDG directories
 xdg-user-dirs-update
 mkdir -p "$HOME/Screenshots"
 
@@ -192,27 +185,27 @@ fi
 
 echo -e "\n\e[1mExtracting icon packages and root assets...\e[0m"
 
-# Extract system icons with privilege escalation fallback
+# Extract system icons with root privileges
 if [ -d "$SCRIPT_DIR/iconsrami" ]; then
-    sudo_exec tar -xzvf "$SCRIPT_DIR/iconsrami/rami.tar.gz" -C /usr/share/icons/
-    sudo_exec tar -xzvf "$SCRIPT_DIR/iconsrami/rami-grey.tar.gz" -C /usr/share/icons/
+    sudo tar -xzvf "$SCRIPT_DIR/iconsrami/rami.tar.gz" -C /usr/share/icons/
+    sudo tar -xzvf "$SCRIPT_DIR/iconsrami/rami-grey.tar.gz" -C /usr/share/icons/
 fi
 
 # Deploy global session launchers
 if [ -d "$SCRIPT_DIR/qtilemateconfs" ]; then
-    sudo_exec cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate-session" /usr/local/bin/
-    sudo_exec chmod a+x /usr/local/bin/qtile-mate-session
+    sudo cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate-session" /usr/local/bin/
+    sudo chmod a+x /usr/local/bin/qtile-mate-session
     
     mkdir -p "$HOME/.config/gtk-3.0"
     cp -v "${SCRIPT_DIR}/qtilemateconfs/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
     
-    sudo_exec cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate.desktop" /usr/share/xsessions/
+    sudo cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate.desktop" /usr/share/xsessions/
 fi
 
 # Configure session alternatives
 echo -e "\n\e[1mSetting qtile-mate-session as system x-session-manager default...\e[0m"
-sudo_exec update-alternatives --install /usr/bin/x-session-manager x-session-manager /usr/local/bin/qtile-mate-session 60
-sudo_exec update-alternatives --set x-session-manager /usr/local/bin/qtile-mate-session
+sudo update-alternatives --install /usr/bin/x-session-manager x-session-manager /usr/local/bin/qtile-mate-session 60
+sudo update-alternatives --set x-session-manager /usr/local/bin/qtile-mate-session
 
 echo -e "\n${GREEN}Installation complete!${NC}"
 echo "1. Log out to boot into your Qtile-Mate desktop"
