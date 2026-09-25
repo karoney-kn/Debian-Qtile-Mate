@@ -3,15 +3,26 @@
 # INFO: SUDO allow users exec commands with root privileges without login as root
 # DEFAULT: y
 
-# Check root
-[ "$(id -u)" -ne 0 ] && { echo "Must run as root" 1>&2; exit 1; }
+# Helper function: runs command normally, falls back to sudo if permissions fail
+sudo_exec() {
+	if ! "$@" 2>/dev/null; then
+		echo -e "\e[33mElevated privileges required for: $*\e[0m"
+		sudo "$@"
+	fi
+}
 
 # Install packages
 echo -e "\e[1mInstalling packages...\e[0m"
-[ "$(find /var/cache/apt/pkgcache.bin -mtime 0 2>/dev/null)" ] || apt-get update  
-apt-get install -y sudo
+if [ -z "$(find /var/cache/apt/pkgcache.bin -mtime 0 2>/dev/null)" ]; then
+	sudo_exec apt-get update
+fi
+
+sudo_exec apt-get install -y sudo
 
 # Add user 1000 to sudo group
 echo -e "\e[1mAdding users to sudo group...\e[0m"
-user=$(cat /etc/passwd | cut -f 1,3 -d: | grep :1000$ | cut -f1 -d:)
-[ "$user" ] && adduser "$user" sudo
+user=$(cut -f 1,3 -d: /etc/passwd | grep :1000$ | cut -f1 -d:)
+
+if [ -n "$user" ]; then
+	sudo_exec adduser "$user" sudo
+fi

@@ -114,6 +114,13 @@ PACKAGES=(
     avahi-daemon acpi acpid power-profiles-daemon
     qimgv xdg-user-dirs-gtk gsimplecal
 
+
+    cups cups-client cups-filters cups-browsed ipp-usb 
+    printer-driver-cups-pdf system-config-printer 
+    sane-utils sane-airscan simple-scan 
+    printer-driver-all hplip 
+    bluez bluez-tools blueman libspa-0.2-bluetooth
+
     # Terminal Applications & Fonts
     suckless-tools eza firefox-esr fonts-freefont-ttf
 
@@ -126,6 +133,8 @@ PACKAGES=(
     gparted numlockx cpu-x dnsutils whois tree btop bat brightnessctl
 )
 
+
+
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Updating package cache..."
     sudo_exec apt-get update && sudo_exec apt-get upgrade -y
@@ -133,9 +142,19 @@ if [ "$ONLY_CONFIG" = false ]; then
     msg "Installing package array..."
     sudo_exec apt-get install -y "${PACKAGES[@]}" || die "Package installation failed"
 
+
+    msg "Enabling CUPS service...."
+    sudo_exec systemctl enable --now cups
+
+    msg "Enabling Bluetooth service...."
+    sudo_exec systemctl enable --now bluetooth
+    sudo_exec systemctl enable avahi-daemon acpid
+
     # Disable latency-inducing background services
     sudo_exec systemctl disable NetworkManager-wait-online.service
     sudo_exec systemctl enable lightdm
+
+
 else
     msg "Skipping package installation (--only-config mode activated)"
 fi

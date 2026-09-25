@@ -1,11 +1,18 @@
 #!/bin/bash
 # ACTION: Install script to control screen brightness
-# INFO: Script birghtness allow increment and decrement screen brightness
+# INFO: Script brightness allow increment and decrement screen brightness
 # INFO: Is used in tint2 taskbar config for inc/dec brightness with mouse wheel
 # DEFAULT: n
 
-# Check root
-[ "$(id -u)" -ne 0 ] && { echo "Must run as root" 1>&2; exit 1; }
-
 base_dir="$(dirname "$(readlink -f "$0")")"
-bash "$base_dir/brightness" -I 
+
+# Helper function: runs command normally, falls back to sudo if permissions fail
+sudo_exec() {
+	if ! "$@" 2>/dev/null; then
+		echo -e "\e[33mElevated privileges required for: $*\e[0m"
+		sudo "$@"
+	fi
+}
+
+# Run the brightness installer script, escalating privileges only if needed
+sudo_exec bash "$base_dir/brightness" -I

@@ -5,19 +5,44 @@
 
 # Config variables
 base_dir="$(dirname "$(readlink -f "$0")")"
+grub_file="/etc/default/grub"
+conf_file="$base_dir/grub.conf"
 
-# Check root
-[ "$(id -u)" -ne 0 ] && { echo "Must run as root" 1>&2; exit 1; }
+# Helper function: runs command normally, falls back to sudo if permissions fail
+sudo_exec() {
+	if ! "$@" 2>/dev/null; then
+		echo -e "\e[33mElevated privileges required for: $*\e[0m"
+		sudo "$@"
+	fi
+}
 
-# Delete existing lines
-echo -e "\e[1mSetting GRUB config...\e[0m"
-for i in $(cat "$base_dir/grub.conf"  | cut -f1 -d=);do
-	sed -i "/\b$i=/Id" /etc/default/grub
-done
+# Helper function: handles appending text via redirected stream with root escalation
+append_to_file() {
+	local src="$1"
+	local target="$2"
 
-# Add lines
-cat "$base_dir/grub.conf" >> /etc/default/grub
+	# Try writing as regular user first
+	if cat "$src" >> "$target" 2>/dev/null; then
+		return 0
+	fi
 
-# Update grub
-echo -e "\e[1mUpdating GRUB...\e[0m"
-update-grub
+	# Fall back to sudo if current user lacks write permission
+	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
+	sudo bash -c "cat '$src' >> '$target'"
+}
+
+# Check if grub configuration file exists
+if [ -f "$conf_file" ]; then
+	# Delete existing lines matching keys in grub.conf
+	echo -e "\e[1mSetting GRUB config...\e[0m"
+	for i in $(cut -f1 -d= "$conf_file" 2>/dev/null); do
+		sudo_exec sed -i "/\b$i=/Id" "$grub_file"
+	done
+
+	# Add lines to GRUB config
+	append_to_file "$conf_file" "$grub_file"
+
+	# Update grub
+	echo -e "\e[1mUpdating GRUB...\e[0m"
+	sudo_exec update-grub
+fi
