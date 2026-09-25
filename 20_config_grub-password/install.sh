@@ -5,34 +5,72 @@
 
 # Config variables
 comment_mark="#DEBIAN-QTILE"
+custom_grub="/etc/grub.d/40_custom"
 
-# Check root
-[ "$(id -u)" -ne 0 ] && { echo "Must run as root" 1>&2; exit 1; }
+# Helper function: runs command normally, falls back to sudo if permissions fail
+sudo_exec() {
+	if ! "$@" 2>/dev/null; then
+		echo -e "\e[33mElevated privileges required for: $*\e[0m"
+		sudo "$@"
+	fi
+}
+
+# Helper function: handles appending text via redirected stream with root escalation
+append_to_file() {
+	local src="$1"
+	local target="$2"
+
+	# Try writing as regular user first
+	if cat "$src" >> "$target" 2>/dev/null; then
+		return 0
+	fi
+
+	# Fall back to sudo if current user lacks write permission
+	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
+	sudo bash -c "cat '$src' >> '$target'"
+}
 
 # Ask for username and password
 echo -n "Enter GRUB username: " ; read guser
 if [[ ! "$guser" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-	echo "Username must math ^[a-zA-Z0-9_-]+$"
+	echo "Username must match ^[a-zA-Z0-9_-]+$"
 	exit 1
 fi
-echo -n "Enter password for $guser user: " ; read gpass
-if [ ! "$gpass" ]; then
+
+echo -n "Enter password for $guser user: " ; read -s gpass
+echo
+if [ -z "$gpass" ]; then
 	echo "Password can't be empty"
 	exit 1
 fi
 
 # Config user and password
 echo -e "\e[1mSetting GRUB config...\e[0m"
-pbkdf2_pass="$(echo -e "$gpass\n$gpass"| grub-mkpasswd-pbkdf2  | grep "grub.pbkdf2.*" -o)"
-sed -i "/${comment_mark}/Id" /etc/grub.d/40_custom
-echo "set superusers=\"$guser\"    $comment_mark
-password_pbkdf2 $guser $pbkdf2_pass   $comment_mark" | tee -a /etc/grub.d/40_custom 
+pbkdf2_pass="$(echo -e "$gpass\n$gpass" | grub-mkpasswd-pbkdf2 | grep "grub.pbkdf2.*" -o)"
 
-# Config others users for select entry
-for f in /etc/grub.d/*; do 
-	sed -i 's/--unrestricted//g' "$f"
-	sed -i 's/\bmenuentry\b/menuentry --unrestricted /g' "$f" 
+if [ -z "$pbkdf2_pass" ]; then
+	echo "Failed to generate PBKDF2 hash"
+	exit 1
+fi
+
+# Remove previous configuration entries
+sudo_exec sed -i "/${comment_mark}/Id" "$custom_grub"
+
+# Append GRUB user credentials
+tmp_pass_file="$(mktemp)"
+echo "set superusers=\"$guser\"    $comment_mark
+password_pbkdf2 $guser $pbkdf2_pass   $comment_mark" > "$tmp_pass_file"
+
+append_to_file "$tmp_pass_file" "$custom_grub"
+rm -f "$tmp_pass_file"
+
+# Config other menu entries to allow booting without password by default
+for f in /etc/grub.d/*; do
+	[ -f "$f" ] || continue
+	sudo_exec sed -i 's/--unrestricted//g' "$f"
+	sudo_exec sed -i 's/\bmenuentry\b/menuentry --unrestricted /g' "$f"
 done
 
+# Update GRUB configuration
 echo -e "\e[1mUpdating GRUB...\e[0m"
-update-grub
+sudo_exec update-grub
