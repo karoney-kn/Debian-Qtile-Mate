@@ -205,13 +205,13 @@ fi
 
 # Deploy global session launchers
 if [ -d "$SCRIPT_DIR/qtilemateconfs" ]; then
-    sudo cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate-session" /usr/local/bin/
+    run_step "Copying Qtile Mate Session to /usr/local/bin/"            sudo cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate-session" /usr/local/bin/
     sudo chmod a+x /usr/local/bin/qtile-mate-session
     
     mkdir -p "$HOME/.config/gtk-3.0"
-    cp -v "${SCRIPT_DIR}/qtilemateconfs/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
+    run_step "Copying Settings.ini file to $HOME/.config/gtk-3.0"       cp -v "${SCRIPT_DIR}/qtilemateconfs/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
     
-    sudo cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate.desktop" /usr/share/xsessions/
+    run_step "Copying qtile-mate.desktop file to /usr/share/xsessions/" sudo cp -v "${SCRIPT_DIR}/qtilemateconfs/qtile-mate.desktop" /usr/share/xsessions/
 fi
 
 # Configure session alternatives
