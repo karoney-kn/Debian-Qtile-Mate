@@ -124,10 +124,14 @@ if [ "$ONLY_CONFIG" = false ]; then
 
     msg "Enabling Bluetooth service...."
     sudo systemctl enable --now bluetooth
+
+    msg "Enabling Avahi Daemon...."
     sudo systemctl enable avahi-daemon acpid
 
-    # Disable latency-inducing background services
+    msg "Disabling latency-inducing background services ....."
     sudo systemctl disable NetworkManager-wait-online.service
+    
+    msg "Enabling Lightdm...."
     sudo systemctl enable lightdm
 else
     msg "Skipping package installation (--only-config mode activated)"
