@@ -111,31 +111,43 @@ PACKAGES=(
     mpv vlc audacity ncmpcpp mkvtoolnix-gui 
     gparted numlockx cpu-x dnsutils whois tree btop bat brightnessctl
 )
+# Helper: Executes a command quietly and displays formatted status output
+run_step() {
+    local label="$1"
+    shift
+    
+    # Print the step description padded to 50 characters
+    printf "  %-50s " "${label}..."
+    
+    # Capture combined stdout and stderr to a temp log variable
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        # Log error output to file and terminal if failed
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
+}
 
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Updating package cache..."
-    sudo  apt-get update && sudo apt-get upgrade -y
+    sudo apt-get update -qq && sudo apt-get upgrade -y -qq
 
     msg "Installing package array..."
-    sudo apt-get install -y "${PACKAGES[@]}" > /dev/null
+    sudo apt-get install -y "${PACKAGES[@]}" || die "Package installation failed"
 
-    msg "Enabling CUPS service...."
-    sudo systemctl enable --now cups
-
-    msg "Enabling Bluetooth service...."
-    sudo systemctl enable --now bluetooth
-
-    msg "Enabling Avahi Daemon...."
-    sudo systemctl enable avahi-daemon acpid
-
-    msg "Disabling latency-inducing background services ....."
-    sudo systemctl disable NetworkManager-wait-online.service
-
-    msg "Enabling Lightdm...."
-    sudo systemctl enable lightdm
+    msg "\nConfiguring System Services:"
+    run_step "Enabling CUPS service"                         sudo systemctl enable --now cups
+    run_step "Enabling Bluetooth service"                    sudo systemctl enable --now bluetooth
+    run_step "Enabling Avahi & ACPID services"               sudo systemctl enable avahi-daemon acpid
+    run_step "Disabling latency-inducing background service" sudo systemctl disable NetworkManager-wait-online.service
+    run_step "Enabling LightDM display manager"              sudo systemctl enable lightdm
 else
     msg "Skipping package installation (--only-config mode activated)"
 fi
+
 
 # Initialize standard XDG directories
 xdg-user-dirs-update
