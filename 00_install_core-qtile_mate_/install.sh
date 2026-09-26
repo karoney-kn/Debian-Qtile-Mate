@@ -42,6 +42,18 @@ msg() { log_msg "INFO" "${CYAN}$*${NC}"; }
 # Command line options
 ONLY_CONFIG=false
 
+# Package names target Debian 13 (trixie); newer releases (forky/sid) and Ubuntu differ
+if [ "$ONLY_CONFIG" = false ]; then
+    . /etc/os-release 2>/dev/null || die "Cannot read /etc/os-release to verify OS"
+    case " $ID ${ID_LIKE:-} " in
+        *" ubuntu "*) die "Unsupported OS: ${PRETTY_NAME:-unknown}. Ubuntu-based systems are not supported." ;;
+    esac
+    DEBIAN_BASE=$(cat /etc/debian_version 2>/dev/null || true)
+    case "$DEBIAN_BASE" in
+        13|13.*) ;;
+        *) die "Unsupported OS: ${PRETTY_NAME:-unknown}. This installer requires a Debian 13 (trixie) base (found: ${DEBIAN_BASE:-no /etc/debian_version})." ;;
+    esac
+fi
 
 
 PACKAGES=(
