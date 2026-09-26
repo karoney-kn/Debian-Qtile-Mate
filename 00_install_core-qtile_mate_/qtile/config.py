@@ -245,8 +245,10 @@ keys = [
 ]
 
 groups = [
-    Group('1', label="|  WORK-SPACE  ", layout="treetab"),
-    Group('2', label="|  PC-STATS  |", layout="treetab"),
+    Group('1', label="|  WORK-SPACE[X]  ", layout="treetab"),
+    Group('2', label="|  WORK-SPACE[Y]  |", layout="treetab"),
+    Group('3', label="|  WORK-SPACE[Z]  |", layout="treetab"),
+    Group('4', label="|  PC-STATS  |", layout="treetab"),
 ]
 
 # Define scratchpads
