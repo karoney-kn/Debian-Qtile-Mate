@@ -5,6 +5,25 @@
 
 set -e
 
+run_step() {
+    local label="$1"
+    shift
+    
+    # Print the step description padded to 50 characters
+    printf "  %-50s " "${label}..."
+    
+    # Capture combined stdout and stderr to a temp log variable
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        # Log error output to file and terminal if failed
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
+}
+
 # Define paths and log settings
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.config"
@@ -112,24 +131,7 @@ PACKAGES=(
     gparted numlockx cpu-x dnsutils whois tree btop bat brightnessctl
 )
 # Helper: Executes a command quietly and displays formatted status output
-run_step() {
-    local label="$1"
-    shift
-    
-    # Print the step description padded to 50 characters
-    printf "  %-50s " "${label}..."
-    
-    # Capture combined stdout and stderr to a temp log variable
-    local output
-    if output=$("$@" 2>&1); then
-        echo -e "[ ${GREEN}OK${NC} ]"
-    else
-        echo -e "[${RED}FAIL${NC}]"
-        # Log error output to file and terminal if failed
-        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
-        return 1
-    fi
-}
+
 
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Updating package cache..."
@@ -197,8 +199,8 @@ msg "\nExtracting icon packages and root assets..."
 
 # Extract system icons with privilege escalation fallback
 if [ -d "$SCRIPT_DIR/iconsrami" ]; then
-    sudo tar -xzvf "$SCRIPT_DIR/iconsrami/rami.tar.gz" -C /usr/share/icons/
-    sudo tar -xzvf "$SCRIPT_DIR/iconsrami/rami-grey.tar.gz" -C /usr/share/icons/
+    run_step "Extracting Rami "             sudo tar -xzvf "$SCRIPT_DIR/iconsrami/rami.tar.gz" -C /usr/share/icons/
+    run_step "Extracting Rami Grey"         sudo tar -xzvf "$SCRIPT_DIR/iconsrami/rami-grey.tar.gz" -C /usr/share/icons/
 fi
 
 # Deploy global session launchers
