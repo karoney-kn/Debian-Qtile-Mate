@@ -39,46 +39,10 @@ msg() { log_msg "INFO" "${CYAN}$*${NC}"; }
 
 # Helper function: tries running command normally, falls back to sudo if permissions fail
 
-
 # Command line options
 ONLY_CONFIG=false
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --only-config)
-            ONLY_CONFIG=true
-            shift
-            ;;
-        --help)
-            echo "Usage: $0 [OPTIONS]"
-            echo "  --only-config      Only copy config files (skip packages and external tools)"
-            echo "  --help             Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
 
-# OS Verification for Debian 13 (Trixie)
-if [ "$ONLY_CONFIG" = false ]; then
-    . /etc/os-release 2>/dev/null || die "Cannot read /etc/os-release to verify OS"
-    case " $ID ${ID_LIKE:-} " in
-        *" ubuntu "*) die "Unsupported OS: ${PRETTY_NAME:-unknown}. Ubuntu-based systems are not supported." ;;
-    esac
-    DEBIAN_BASE=$(cat /etc/debian_version 2>/dev/null || true)
-    case "$DEBIAN_BASE" in
-        13|13.*) ;;
-        *) die "Unsupported OS: ${PRETTY_NAME:-unknown}. This installer requires a Debian 13 (trixie) base (found: ${DEBIAN_BASE:-no /etc/debian_version})." ;;
-    esac
-fi
-
-read -rp "Install Qtile And Mate Desktop? (y/n) " REPLY
-[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
 
 PACKAGES=(
     # Core system tools & X11
