@@ -117,7 +117,7 @@ if [ "$ONLY_CONFIG" = false ]; then
     sudo  apt-get update && sudo apt-get upgrade -y
 
     msg "Installing package array..."
-    sudo apt-get install -y "${PACKAGES[@]}" || die "Package installation failed"
+    sudo apt-get install -y "${PACKAGES[@]}" > /dev/null
 
     msg "Enabling CUPS service...."
     sudo systemctl enable --now cups
@@ -130,7 +130,7 @@ if [ "$ONLY_CONFIG" = false ]; then
 
     msg "Disabling latency-inducing background services ....."
     sudo systemctl disable NetworkManager-wait-online.service
-    
+
     msg "Enabling Lightdm...."
     sudo systemctl enable lightdm
 else
