@@ -143,18 +143,12 @@ if [ -f "$SCRIPT_DIR/QUICKSTART.md" ]; then
 fi
 
 # Manage existing active Qtile configurations
+# Auto-backup existing Qtile configurations without stopping for input
 if [ -d "$QTILE_CONFIG_DIR" ]; then
-    read -rp "Found existing Qtile config. Backup current state? (y/n) " REPLY
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        mv "$QTILE_CONFIG_DIR" "$QTILE_CONFIG_DIR.bak.$(date +%s)"
-        msg "Backed up existing configuration."
-    else
-        read -rp "Overwrite without backup? (y/n) " REPLY
-        [[ $REPLY =~ ^[Yy]$ ]] || die "Installation process cancelled."
-        rm -rf "$QTILE_CONFIG_DIR"
-    fi
+    backup_path="${QTILE_CONFIG_DIR}.bak.$(date +%s)"
+    msg "Existing Qtile config found. Automatically backing up to: ${backup_path}"
+    mv "$QTILE_CONFIG_DIR" "$backup_path"
 fi
-
 # Deploy dotfiles
 msg "Deploying configuration directories..."
 mkdir -p "$CONFIG_DIR"
