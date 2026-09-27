@@ -5,47 +5,43 @@
 
 # Config variables
 repo_list="/etc/apt/sources.list.d/onlyoffice.list"
+keyring_path="/usr/share/keyrings/onlyoffice-keyring.gpg"
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-	local src="$1"
-	local target="$2"
+echo -e "\e[1mConfiguring OnlyOffice Desktop Editors installation...\e[0m"
 
-	# Try writing as regular user first
-	if cat "$src" >> "$target" 2>/dev/null; then
-		return 0
-	fi
-
-	# Fall back to sudo if current user lacks write permission
-	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-	sudo bash -c "cat '$src' >> '$target'"
-}
-
-# Install repositories and update
-if ! grep -R "onlyoffice.com" /etc/apt/ &> /dev/null; then
-	echo -e "\e[1mConfiguring repositories...\e[0m"
-	
-	tmp_key="$(mktemp)"
-	wget -qO - "https://download.onlyoffice.com/GPG-KEY-ONLYOFFICE" > "$tmp_key"
-	sudo_exec gpg --dearmor --yes -o /usr/share/keyrings/onlyoffice-keyring.gpg "$tmp_key"
-	rm -f "$tmp_key"
-
-	tmp_repo="$(mktemp)"
-	echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg] https://download.onlyoffice.com/repo/debian squeeze main' > "$tmp_repo"
-	sudo_exec cp "$tmp_repo" "$repo_list"
-	rm -f "$tmp_repo"
-
-	sudo_exec apt-get update
+# Configure repository and GPG keyring if not present
+if ! grep -R "onlyoffice.com" /etc/apt/ &>/dev/null; then
+    run_step "Downloading OnlyOffice GPG signing key" bash -c "wget -qO- https://download.onlyoffice.com/GPG-KEY-ONLYOFFICE | sudo gpg --dearmor --yes -o '$keyring_path'"
+    
+    repo_entry="deb [signed-by=$keyring_path] https://download.onlyoffice.com/repo/debian squeeze main"
+    run_step "Configuring OnlyOffice repository list" bash -c "echo '$repo_entry' | sudo tee '$repo_list' >/dev/null"
+    
+    run_step "Updating APT package cache with OnlyOffice repository" sudo apt-get update -qq
 fi
 
-# Install package
-echo -e "\e[1mInstalling packages...\e[0m"
-sudo_exec apt-get -y install onlyoffice-desktopeditors || exit 1
+# Install OnlyOffice Desktop Editors
+run_step "Installing onlyoffice-desktopeditors package" sudo apt-get install -y -qq onlyoffice-desktopeditors

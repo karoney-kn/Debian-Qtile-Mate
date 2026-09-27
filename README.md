@@ -39,8 +39,8 @@ The main script `install` can exec all scripts or only a select list:
 ```bash
 git clone https://github.com/karoney-kn/Debian-Qtile-Mate.git
 cd Debian-Qtile-Mate
-chmod +x install.sh
-./install.sh
+chmod +x install
+./install
 ```
 
 <img align="center" width="450" src="https://user-images.githubusercontent.com/32820131/81058996-de77f780-8ecf-11ea-9ec0-aa089c637c8a.png">

@@ -1,30 +1,47 @@
 #!/bin/bash
-# ACTION: Config users home directories permissions to 750 (for current and future users)
-# INFO: By default home directories permissions are 755 and grant read permissions to everyone
+# ACTION: Config users home directories permissions to 0750 (for current and future users)
+# INFO: Secures home directories by revoking world-read privileges (default 0755)
 # DEFAULT: y
 
 # Config variables
 base_dir="$(dirname "$(readlink -f "$0")")"
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Config adduser for create users with $HOME permissions 0750
+echo -e "\e[1mEnforcing 0750 home directory permissions...\e[0m"
+
+# Update default directory mode for future created users
 if [ -f /etc/adduser.conf ]; then
-	sudo_exec sed -i 's/DIR_MODE=[0-9]*/DIR_MODE=0750/g' /etc/adduser.conf
+    run_step "Updating DIR_MODE in /etc/adduser.conf" sudo sed -i 's/DIR_MODE=[0-9]*/DIR_MODE=0750/g' /etc/adduser.conf
 fi
 
-# Config home permissions for existing users
-for d in /home/*/ ; do
-	# Skip non-existent directories or invalid user homes
-	[ ! -d "$d" ] && continue
-	[ "$(dirname "$d")" = "/home" ] && ! id "$(basename "$d")" &>/dev/null && continue
+# Restrict permissions for existing standard user home directories
+for d in /home/*/; do
+    [ -d "$d" ] || continue
+    username="$(basename "$d")"
+    id "$username" &>/dev/null || continue
 
-	# Set current home permissions
-	sudo_exec chmod -v 0750 "$d"
+    run_step "Securing home directory ($username)" sudo chmod 0750 "$d"
 done

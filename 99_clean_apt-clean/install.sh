@@ -3,37 +3,47 @@
 # INFO: Safely removes orphaned dependencies, clears local .deb archives, and frees system disk space
 # DEFAULT: y
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-    if ! "$@" 2>/dev/null; then
-        echo -e "\e[33mElevated privileges required for: $*\e[0m"
-        sudo "$@"
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
     fi
 }
 
-# 1. Update APT Package Lists
-echo -e "\e[1mRefreshing package lists...\e[0m"
-sudo_exec apt-get update
+echo -e "\e[1mExecuting system maintenance and cleanup...\e[0m"
 
-# 2. Remove Orphaned & Automatically Installed Dependencies
-# Note: APT tracks packages that were installed as dependencies and are no longer needed by any installed package.
-echo -e "\n\e[1mRemoving unused orphaned dependencies...\e[0m"
-sudo_exec apt-get -y autoremove --purge
+# Refresh APT package cache
+run_step "Updating APT package cache" sudo apt-get update -qq
 
-# 3. Clean APT Cache Files
-# 'autoclean' removes .deb packages that can no longer be downloaded (obsolete versions).
-# 'clean' clears out the local repository of retrieved package files (.deb) in /var/cache/apt/archives.
-echo -e "\n\e[1mCleaning package cache files (.deb archives)...\e[0m"
-sudo_exec apt-get -y autoclean
-sudo_exec apt-get -y clean
+# Purge unused orphaned dependencies
+run_step "Removing orphaned dependencies and config files" sudo apt-get autoremove --purge -y -qq
 
-# 4. Clean Systemd Journal Logs (Retain last 3 days / max 100MB)
+# Clean obsolete and downloaded .deb archive packages
+run_step "Cleaning obsolete cached packages (autoclean)" sudo apt-get autoclean -y -qq
+run_step "Purging local package archive cache (clean)" sudo apt-get clean -y -qq
+
+# Vacuum systemd journal logs to retain 3 days or 100MB
 if command -v journalctl &>/dev/null; then
-    echo -e "\n\e[1mVacuuming old system logs...\e[0m"
-    sudo_exec journalctl --vacuum-time=3d 2>/dev/null || true
-    sudo_exec journalctl --vacuum-size=100M 2>/dev/null || true
+    run_step "Vacuuming system logs older than 3 days" sudo journalctl --vacuum-time=3d
+    run_step "Limiting system logs total size to 100M" sudo journalctl --vacuum-size=100M
 fi
 
-# 5. Report Disk Usage Status
-echo -e "\n\e[32mMaintenance complete! Current root partition usage:\e[0m"
-df -h /
+# Display current root filesystem usage
+echo -e "\n\e[1mRoot partition disk usage summary:\e[0m"
+df -h / | awk 'NR==1 || NR==2 {print "  " $0}'

@@ -1,84 +1,88 @@
 #!/bin/bash
 # ACTION: Install vim editor, and apply some configs and plugins
-# INFO: Install vim-gtk3, plug plugin manager, airline statusbar and hybrid-material colorsheme
+# INFO: Installs vim, vim-plug manager, airline, hybrid-material theme, and provisions global/user configs
 # DEFAULT: y
 
 # Config variables
 base_dir="$(dirname "$(readlink -f "$0")")"
 comment_mark='"Debian-Qtile-Mate-vim'
-
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
-}
-
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-	local src="$1"
-	local target="$2"
-
-	# Try writing as regular user first
-	if cat "$src" >> "$target" 2>/dev/null; then
-		return 0
-	fi
-
-	# Fall back to sudo if current user lacks write permission
-	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-	sudo bash -c "cat '$src' >> '$target'"
-}
-
-# Install vim
-echo -e "\e[1mInstalling packages...\e[0m"
-if [ -z "$(find /var/cache/apt/pkgcache.bin -mtime 0 2>/dev/null)" ]; then
-	sudo_exec apt-get update
-fi
-sudo_exec apt-get install -y vim
-
-# Config vim plug for global (all users)
-echo -e "\e[1mInstalling vim plugins for all users in /etc/vim/ ...\e[0m"
-sudo_exec mkdir -vp "/etc/vim/autoload"
-
-# Fetch plug.vim to a temp file first as standard user
-tmp_plug="$(mktemp)"
-curl -fLo "$tmp_plug" https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-sudo_exec cp "$tmp_plug" /etc/vim/autoload/plug.vim
-rm -f "$tmp_plug"
-
-sudo_exec mkdir -p "/etc/vim/plugged/"
-
-echo -e "\e[1mAdding plugins to /etc/vim/rc.local ...\e[0m"
 vimrc_local="/etc/vim/vimrc.local"
 
-if [ -s "$vimrc_local" ]; then
-	# Remove old comment lines
-	sudo_exec sed -i "/${comment_mark}/Id" "$vimrc_local"
-	
-	# Combine base file and existing config safely via temporary file
-	tmp_combined="$(mktemp)"
-	cat "$base_dir/vimrc.local" "$vimrc_local" > "$tmp_combined"
-	sudo_exec cp "$tmp_combined" "$vimrc_local"
-	rm -f "$tmp_combined"
-else
-	sudo_exec cp -v "$base_dir/vimrc.local" /etc/vim/
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Helper function: runs command directly, or via sudo if needed
+sudo_exec() {
+    if "$@" 2>/dev/null; then
+        return 0
+    else
+        sudo "$@"
+    fi
+}
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
+}
+
+echo -e "\e[1mConfiguring Vim editor, vim-plug, and plugins...\e[0m"
+
+# Refresh apt cache if cache is older than 24 hours or missing
+if [ -z "$(find /var/cache/apt/pkgcache.bin -mtime 0 2>/dev/null)" ]; then
+    run_step "Updating package cache" sudo_exec apt-get update -qq
 fi
 
-# Download all plugins non-interactively
-sudo_exec vim +'PlugInstall --sync' +qa
+# Install Vim package
+run_step "Installing vim package" sudo_exec apt-get install -y -qq vim
 
-# Copy users config
-echo -e "\e[1mSetting configs to all users...\e[0m"
-for d in /etc/skel/ /home/*/ /root/; do
-	# Skip non-existent directories or invalid user homes
-	[ ! -d "$d" ] && continue
-	[ "$(dirname "$d")" = "/home" ] && ! id "$(basename "$d")" &>/dev/null && continue
+# Setup vim-plug global environment in /etc/vim
+run_step "Creating /etc/vim directory structure" sudo_exec mkdir -p /etc/vim/autoload /etc/vim/plugged
 
-	user_vimrc="$d/.vimrc"
-	owner=$(stat -c %u:%g "$d" 2>/dev/null || echo "0:0")
+run_step "Downloading vim-plug plugin manager" bash -c "curl -fLo /tmp/plug.vim https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim && sudo mv /tmp/plug.vim /etc/vim/autoload/plug.vim"
 
-	# Copy vimrc configuration and set ownership
-	sudo_exec cp -v "${base_dir}/vimrc" "$user_vimrc"
-	sudo_exec chown "$owner" "$user_vimrc"
-done
+# Apply global configuration in /etc/vim/vimrc.local
+if [ -f "$base_dir/vimrc.local" ]; then
+    if [ -s "$vimrc_local" ]; then
+        run_step "Purging old Vim config markers in $vimrc_local" sudo_exec sed -i "/${comment_mark}/Id" "$vimrc_local"
+        run_step "Prepending new Vim config block to $vimrc_local" bash -c "cat '$base_dir/vimrc.local' '$vimrc_local' | sudo tee '$vimrc_local' >/dev/null"
+    else
+        run_step "Deploying global $vimrc_local configuration" sudo_exec cp "$base_dir/vimrc.local" "$vimrc_local"
+    fi
+fi
+
+# Run automated headless plugin installation
+run_step "Installing Vim plugins non-interactively" sudo_exec vim +'PlugInstall --sync' +qa
+
+# Deploy user-level .vimrc to /etc/skel, /root, and existing user homes
+if [ -f "$base_dir/vimrc" ]; then
+    for target_dir in /etc/skel/ /home/*/ /root/; do
+        [ -d "$target_dir" ] || continue
+        
+        # Verify home directory validity for existing users
+        if [ "$(dirname "$target_dir")" = "/home" ]; then
+            username="$(basename "$target_dir")"
+            id "$username" &>/dev/null || continue
+        fi
+
+        target_file="${target_dir}.vimrc"
+        owner=$(stat -c %u:%g "$target_dir" 2>/dev/null || echo "0:0")
+
+        run_step "Deploying .vimrc to $target_dir" sudo_exec cp "$base_dir/vimrc" "$target_file"
+        run_step "Setting ownership on $target_file" sudo_exec chown "$owner" "$target_file"
+    done
+fi

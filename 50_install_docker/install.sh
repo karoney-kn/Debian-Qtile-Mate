@@ -1,87 +1,80 @@
 #!/bin/bash
 # ACTION: Install Docker Engine, Docker CLI, Containerd, and Docker Compose from official repository
-# INFO: Configures official Docker GPG key, repository, installs package stack, and sets up user permissions
+# INFO: Configures official Docker repository, installs engine suite, and sets user group permissions
 # DEFAULT: y
 
 # Config variables
 docker_repo_list="/etc/apt/sources.list.d/docker.list"
 docker_keyring="/usr/share/keyrings/docker-archive-keyring.gpg"
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-	local src="$1"
-	local target="$2"
+echo -e "\e[1mConfiguring Docker Engine deployment...\e[0m"
 
-	# Try writing as regular user first
-	if cat "$src" >> "$target" 2>/dev/null; then
-		return 0
-	fi
-
-	# Fall back to sudo if current user lacks write permission
-	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-	sudo bash -c "cat '$src' >> '$target'"
-}
-
-# 1. Install prerequisites for repository setup
-echo -e "\e[1mInstalling repository prerequisites...\e[0m"
+# Refresh apt cache if older than 24 hours or missing
 if [ -z "$(find /var/cache/apt/pkgcache.bin -mtime 0 2>/dev/null)" ]; then
-	sudo_exec apt-get update
-fi
-sudo_exec apt-get install -y ca-certificates curl gnupg lsb-release
-
-# 2. Configure Official Docker Repository
-if ! grep -R "download.docker.com" /etc/apt/ &> /dev/null; then
-	echo -e "\e[1mConfiguring Docker official repository...\e[0m"
-	
-	# Fetch GPG key to a temp file first as standard user
-	tmp_key="$(mktemp)"
-	curl -fsSL "https://download.docker.com/linux/debian/gpg" -o "$tmp_key"
-	sudo_exec gpg --dearmor --yes -o "$docker_keyring" "$tmp_key"
-	rm -f "$tmp_key"
-
-	# Create repository source entry
-	arch="$(dpkg --print-architecture)"
-	tmp_repo="$(mktemp)"
-	echo "deb [arch=$arch signed-by=$docker_keyring] https://download.docker.com/linux/debian trixie stable" > "$tmp_repo"
-	sudo_exec cp "$tmp_repo" "$docker_repo_list"
-	rm -f "$tmp_repo"
-
-	sudo_exec apt-get update
+    run_step "Updating package cache" sudo apt-get update -qq
 fi
 
-# 3. Install Docker Engine and Plugin Suite
+# Install repository setup dependencies
+run_step "Installing repository dependencies" sudo apt-get install -y -qq ca-certificates curl gnupg lsb-release
+
+# Configure official Docker repository and keyring
+if ! grep -R "download.docker.com" /etc/apt/ &>/dev/null; then
+    run_step "Downloading Docker GPG signing key" bash -c "curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor --yes -o '$docker_keyring'"
+    
+    # Retrieve system architecture and Debian version codename
+    arch="$(dpkg --print-architecture)"
+    [ -f /etc/os-release ] && . /etc/os-release
+    codename="${VERSION_CODENAME:-trixie}"
+    
+    repo_entry="deb [arch=$arch signed-by=$docker_keyring] https://download.docker.com/linux/debian $codename stable"
+    run_step "Configuring Docker repository list" bash -c "echo '$repo_entry' | sudo tee '$docker_repo_list' >/dev/null"
+    
+    run_step "Updating APT package cache with Docker repository" sudo apt-get update -qq
+fi
+
+# Install Docker Engine plugin suite
 DOCKER_PACKAGES=(
-	docker-ce
-	docker-ce-cli
-	containerd.io
-	docker-buildx-plugin
-	docker-compose-plugin
+    docker-ce
+    docker-ce-cli
+    containerd.io
+    docker-buildx-plugin
+    docker-compose-plugin
 )
 
-echo -e "\e[1mInstalling Docker suite...\e[0m"
-sudo_exec apt-get install -y "${DOCKER_PACKAGES[@]}" || exit 1
+run_step "Installing Docker Engine package suite" sudo apt-get install -y -qq "${DOCKER_PACKAGES[@]}"
 
-# 4. Configure User Group Membership
+# Configure user permissions for rootless docker execution
 CURRENT_USER="${SUDO_USER:-$USER}"
 
 if [ -n "$CURRENT_USER" ] && [ "$CURRENT_USER" != "root" ]; then
-	echo -e "\e[1mAdding user '$CURRENT_USER' to docker group...\e[0m"
-	if getent group docker >/dev/null; then
-		sudo_exec usermod -aG docker "$CURRENT_USER"
-	fi
+    if getent group docker >/dev/null; then
+        run_step "Adding user '$CURRENT_USER' to docker group" sudo usermod -aG docker "$CURRENT_USER"
+    fi
 fi
 
-# 5. Enable and Start System Service
-echo -e "\e[1mEnabling Docker daemon service...\e[0m"
-sudo_exec systemctl enable --now docker.service
-sudo_exec systemctl enable --now containerd.service
-
-echo -e "\e[32mDocker installation complete! Log out and back in for group changes to take effect.\e[0m"
+# Enable and start Docker system daemon services
+run_step "Enabling and starting Docker service" sudo systemctl enable --now docker.service
+run_step "Enabling and starting Containerd service" sudo systemctl enable --now containerd.service

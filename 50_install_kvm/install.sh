@@ -3,92 +3,80 @@
 # INFO: Sets up full hardware virtualization, bridges, guest tools, and image manipulation scripts
 # DEFAULT: y
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-	local src="$1"
-	local target="$2"
+echo -e "\e[1mConfiguring KVM hypervisor and virtualization stack...\e[0m"
 
-	# Try writing as regular user first
-	if cat "$src" >> "$target" 2>/dev/null; then
-		return 0
-	fi
-
-	# Fall back to sudo if current user lacks write permission
-	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-	sudo bash -c "cat '$src' >> '$target'"
-}
-
-# 1. Package Cache Refresh
-echo -e "\e[1mUpdating package cache...\e[0m"
+# Refresh apt cache if older than 24 hours or missing
 if [ -z "$(find /var/cache/apt/pkgcache.bin -mtime 0 2>/dev/null)" ]; then
-	sudo_exec apt-get update
+    run_step "Updating package cache" sudo apt-get update -qq
 fi
 
-# 2. Comprehensive KVM & Virt Tools Array
+# Define comprehensive KVM & Virt Tools package list
 KVM_PACKAGES=(
-	# Core Hypervisor & Emulation
-	qemu-system-x86
-	qemu-utils
-	qemu-system-gui
-	qemu-block-extra
-
-	# Libvirt Daemon & Client Infrastructure
-	libvirt-daemon-system
-	libvirt-clients
-	libvirt-daemon-config-network
-
-	# Management Tools & GUI
-	virt-manager
-	virt-viewer
-	virtinst                   # Provides virt-install and virt-clone
-
-	# Guest Image & ISO Manipulation Utilities
-	libguestfs-tools           # Provides virt-customize, virt-builder, virt-sysprep
-	guestfs-tools              # Advanced guest inspection tools
-	genisoimage                # Utility for generating bootable ISOs for unattended installs
-	p7zip-full                 # Extraction tool for raw image manipulation
-
-	# Networking & Storage Helpers
-	bridge-utils
-	dnsmasq-base
-	iptables
-	ebtables
-	vde2
-	ovmf                       # UEFI firmware support for virtual machines
+    qemu-system-x86
+    qemu-utils
+    qemu-system-gui
+    qemu-block-extra
+    libvirt-daemon-system
+    libvirt-clients
+    libvirt-daemon-config-network
+    virt-manager
+    virt-viewer
+    virtinst
+    libguestfs-tools
+    guestfs-tools
+    genisoimage
+    p7zip-full
+    bridge-utils
+    dnsmasq-base
+    iptables
+    ebtables
+    vde2
+    ovmf
 )
 
-echo -e "\e[1mInstalling complete KVM hypervisor and virtualization tooling...\e[0m"
-sudo_exec apt-get install -y "${KVM_PACKAGES[@]}" || exit 1
+# Install full KVM virtualisation suite
+run_step "Installing KVM virtualization stack" sudo apt-get install -y -qq "${KVM_PACKAGES[@]}"
 
-# 3. User Group Permissions Assignment
+# Configure user group memberships for libvirt and kvm access
 CURRENT_USER="${SUDO_USER:-$USER}"
 
 if [ -n "$CURRENT_USER" ] && [ "$CURRENT_USER" != "root" ]; then
-	echo -e "\e[1mConfiguring user '$CURRENT_USER' access to hypervisor sockets...\e[0m"
-	
-	for group in libvirt libvirt-qemu kvm; do
-		if getent group "$group" >/dev/null; then
-			sudo_exec usermod -aG "$group" "$CURRENT_USER"
-		fi
-	done
+    for group in libvirt libvirt-qemu kvm; do
+        if getent group "$group" >/dev/null; then
+            run_step "Adding '$CURRENT_USER' to group '$group'" sudo usermod -aG "$group" "$CURRENT_USER"
+        fi
+    done
 fi
 
-# 4. Service Initialization & Default Network Enablement
-echo -e "\e[1mEnabling hypervisor services and NAT networking...\e[0m"
-sudo_exec systemctl enable --now libvirtd
+# Enable and start hypervisor service
+run_step "Enabling and starting libvirtd service" sudo systemctl enable --now libvirtd
 
-# Autostart the default NAT bridge network if defined
-if sudo_exec virsh net-info default &>/dev/null; then
-	sudo_exec virsh net-autostart default 2>/dev/null || true
-	sudo_exec virsh net-start default 2>/dev/null || true
+# Configure default NAT bridge network autostart and activation
+if sudo virsh net-info default &>/dev/null; then
+    run_step "Setting default virsh network to autostart" sudo virsh net-autostart default
+    run_step "Starting default virsh network" sudo virsh net-start default
 fi
-
-echo -e "\e[32mKVM and virtualization tools successfully installed! Log out and back in to apply group memberships.\e[0m"

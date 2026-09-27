@@ -1,49 +1,51 @@
 #!/bin/bash
-# ACTION: Enable CTRL+ALT+BACKSPACE shortcut for kill X server
-# INFO: In most systems CTRL+ALT+BACKSPACE shortcut for kill X server is disabled, but is very useful for go back to login when X is not responding
+# ACTION: Enable CTRL+ALT+BACKSPACE shortcut to kill X server
+# INFO: Configures /etc/default/keyboard to allow killing unresponsive X server sessions
 # DEFAULT: y
 
 # Config variables
 keyboard_file="/etc/default/keyboard"
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-  if ! "$@" 2>/dev/null; then
-    echo -e "\e[33mElevated privileges required for: $*\e[0m"
-    sudo "$@"
-  fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-  local src="$1"
-  local target="$2"
+echo -e "\e[1mConfiguring X server terminate shortcut...\e[0m"
 
-  # Try writing as regular user first
-  if cat "$src" >> "$target" 2>/dev/null; then
-    return 0
-  fi
-
-  # Fall back to sudo if current user lacks write permission
-  echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-  sudo bash -c "cat '$src' >> '$target'"
-}
-
-# Check if config is already set
-if grep -q "terminate:ctrl_alt_bksp" "$keyboard_file" 2>/dev/null; then
-  exit 0
+# Verify keyboard configuration file exists
+if [ ! -f "$keyboard_file" ]; then
+    echo -e "${YELLOW}Warning: $keyboard_file not found. Skipping keyboard options configuration.${NC}"
+    exit 0
 fi
 
-echo -e "\e[1mSetting $keyboard_file config...\e[0m"
+# Idempotency check: Exit cleanly if shortcut is already configured
+if grep -q "terminate:ctrl_alt_bksp" "$keyboard_file" 2>/dev/null; then
+    run_step "Checking X server terminate shortcut status" true
+    exit 0
+fi
 
-# Modify or append the keyboard configuration
-if grep -q "XKBOPTIONS" "$keyboard_file" 2>/dev/null; then
-  sudo_exec sed -i 's/XKBOPTIONS="/XKBOPTIONS="terminate:ctrl_alt_bksp,/' "$keyboard_file"
+# Modify existing XKBOPTIONS variable or append new definition
+if grep -q "^XKBOPTIONS=" "$keyboard_file" 2>/dev/null; then
+    run_step "Appending shortcut to existing XKBOPTIONS" sudo sed -i 's/XKBOPTIONS="/XKBOPTIONS="terminate:ctrl_alt_bksp,/' "$keyboard_file"
 else
-  # Create a temporary file to use with append_to_file
-  tmp_file="$(mktemp)"
-  echo 'XKBOPTIONS="terminate:ctrl_alt_bksp"' > "$tmp_file"
-  
-  append_to_file "$tmp_file" "$keyboard_file"
-  rm -f "$tmp_file"
+    run_step "Adding XKBOPTIONS to $keyboard_file" bash -c "echo 'XKBOPTIONS=\"terminate:ctrl_alt_bksp\"' | sudo tee -a '$keyboard_file' >/dev/null"
 fi
