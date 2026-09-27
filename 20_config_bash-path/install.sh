@@ -2,6 +2,16 @@
 # ACTION: Config modified .profile file with new path (sbin for regular users) and color definitions
 # INFO: Updates .profile and .xsession for regular user home directories under /home
 # DEFAULT: y
+
+
+
+# Standardizing color palette output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
 run_step() {
     local label="$1"
     shift

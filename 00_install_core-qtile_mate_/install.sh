@@ -5,6 +5,13 @@
 
 set -e
 
+# Standardizing color palette output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
 run_step() {
     local label="$1"
     shift
@@ -35,12 +42,6 @@ LOG_FILE="$HOME/qtile-install.log"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 mkdir -p "$TEMP_DIR"
 
-# Standardizing color palette output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-NC='\033[0m'
 
 # Logger function: safe file logging without stream redirection loops
 log_msg() {
