@@ -1,77 +1,51 @@
 #!/bin/bash
-# ACTION: Config system for show text messages during boot time
-# INFO: In boot process the system can show a stupid logo or messages about the booting process
+# ACTION: Config system to show text messages during boot time
+# INFO: Configures GRUB boot parameters to output detailed kernel console messages instead of splash screens
 # DEFAULT: y
-#!/bin/bash
-# ACTION: Config system for show text messages during boot time
-# INFO: In boot process the system can show a stupid logo or messages about the booting process
-# DEFAULT: y
-
-# Config variables
-base_dir="$(dirname "$(readlink -f "$0")")"
-
-# Check root
-[ "$(id -u)" -ne 0 ] && { echo "Must run as root" 1>&2; exit 1; }
-
-# Delete existing lines
-for i in $(cat "$base_dir/grub.conf"  | cut -f1 -d=); do
-	sed -i "/\b$i=/Id" /etc/default/grub
-done
-
-# Add lines
-echo -e "\e[1mSetting GRUB config...\e[0m"
-cat "$base_dir/grub.conf" >> /etc/default/grub
-
-# Update grub
-echo -e "\e[1mUpdating GRUB..\e[0m"
-update-grub
-
-
-
-
 
 # Config variables
 base_dir="$(dirname "$(readlink -f "$0")")"
 grub_file="/etc/default/grub"
 conf_file="$base_dir/grub.conf"
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-	local src="$1"
-	local target="$2"
+echo -e "\e[1mConfiguring verbose GRUB boot parameters...\e[0m"
 
-	# Try writing as regular user first
-	if cat "$src" >> "$target" 2>/dev/null; then
-		return 0
-	fi
-
-	# Fall back to sudo if current user lacks write permission
-	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-	sudo bash -c "cat '$src' >> '$target'"
-}
-
-# Check if grub configuration file exists
+# Verify GRUB configuration source file existence
 if [ -f "$conf_file" ]; then
-	# Delete existing lines matching keys in grub.conf
-	for i in $(cut -f1 -d= "$conf_file" 2>/dev/null); do
-		sudo_exec sed -i "/\b$i=/Id" "$grub_file"
-	done
+    # Purge existing keys matching those defined in grub.conf
+    for key in $(cut -f1 -d= "$conf_file" 2>/dev/null); do
+        run_step "Purging $key from $grub_file" sudo sed -i "/\b$key=/Id" "$grub_file"
+    done
 
-	# Add lines to GRUB config
-	echo -e "\e[1mSetting GRUB config...\e[0m"
-	append_to_file "$conf_file" "$grub_file"
+    # Append boot message parameters using non-interactive sudo tee
+    run_step "Applying boot display settings to $grub_file" bash -c "cat '$conf_file' | sudo tee -a '$grub_file' >/dev/null"
 
-	# Update grub
-	echo -e "\e[1mUpdating GRUB..\e[0m"
-	sudo_exec update-grub
+    # Regenerate GRUB configuration file
+    run_step "Regenerating GRUB bootloader configuration" sudo update-grub
+else
+    echo -e "${YELLOW}Warning: Configuration file $conf_file not found. Skipping boot display setup.${NC}"
 fi
-
-
