@@ -1,76 +1,77 @@
 #!/bin/bash
 # ACTION: Config GRUB with password protection to prevent users editing entries
-# INFO: By default everyone can edit GRUB entries during boot time and login with root privileges
+# INFO: Secures boot entries by requiring PBKDF2 authentication to edit GRUB parameters
 # DEFAULT: n
 
 # Config variables
 comment_mark="#DEBIAN-QTILE"
 custom_grub="/etc/grub.d/40_custom"
 
-# Helper function: runs command normally, falls back to sudo if permissions fail
-sudo_exec() {
-	if ! "$@" 2>/dev/null; then
-		echo -e "\e[33mElevated privileges required for: $*\e[0m"
-		sudo "$@"
-	fi
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+
+# Helper function: aligned visual logging output
+run_step() {
+    local label="$1"
+    shift
+    
+    printf "  %-50s " "${label}..."
+    
+    local output
+    if output=$("$@" 2>&1); then
+        echo -e "[ ${GREEN}OK${NC} ]"
+    else
+        echo -e "[${RED}FAIL${NC}]"
+        [ -n "$output" ] && echo -e "${YELLOW}${output}${NC}" >&2
+        return 1
+    fi
 }
 
-# Helper function: handles appending text via redirected stream with root escalation
-append_to_file() {
-	local src="$1"
-	local target="$2"
+echo -e "\e[1mConfiguring GRUB authentication security...\e[0m"
 
-	# Try writing as regular user first
-	if cat "$src" >> "$target" 2>/dev/null; then
-		return 0
-	fi
-
-	# Fall back to sudo if current user lacks write permission
-	echo -e "\e[33mElevated privileges required to append to: $target\e[0m"
-	sudo bash -c "cat '$src' >> '$target'"
-}
-
-# Ask for username and password
-echo -n "Enter GRUB username: " ; read guser
+# Prompts for GRUB administrative credentials
+read -rp "Enter GRUB username: " guser
 if [[ ! "$guser" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-	echo "Username must match ^[a-zA-Z0-9_-]+$"
-	exit 1
+    echo -e "${RED}ERROR: Invalid username format. Must match ^[a-zA-Z0-9_-]+$${NC}" >&2
+    exit 1
 fi
 
-echo -n "Enter password for $guser user: " ; read -s gpass
+read -rsp "Enter password for $guser user: " gpass
 echo
 if [ -z "$gpass" ]; then
-	echo "Password can't be empty"
-	exit 1
+    echo -e "${RED}ERROR: Password cannot be empty.${NC}" >&2
+    exit 1
 fi
 
-# Config user and password
-echo -e "\e[1mSetting GRUB config...\e[0m"
-pbkdf2_pass="$(echo -e "$gpass\n$gpass" | grub-mkpasswd-pbkdf2 | grep "grub.pbkdf2.*" -o)"
+# Generate PBKDF2 hash from provided password
+pbkdf2_pass="$(echo -e "${gpass}\n${gpass}" | grub-mkpasswd-pbkdf2 | grep "grub.pbkdf2.*" -o)"
 
 if [ -z "$pbkdf2_pass" ]; then
-	echo "Failed to generate PBKDF2 hash"
-	exit 1
+    echo -e "${RED}ERROR: Failed to generate PBKDF2 password hash.${NC}" >&2
+    exit 1
 fi
 
-# Remove previous configuration entries
-sudo_exec sed -i "/${comment_mark}/Id" "$custom_grub"
+# Purge existing custom entries matching the comment marker
+run_step "Purging previous GRUB auth settings" sudo sed -i "/${comment_mark}/Id" "$custom_grub"
 
-# Append GRUB user credentials
-tmp_pass_file="$(mktemp)"
-echo "set superusers=\"$guser\"    $comment_mark
-password_pbkdf2 $guser $pbkdf2_pass   $comment_mark" > "$tmp_pass_file"
+# Append credential blocks using privilege-safe tee
+auth_block=$(cat <<EOF
+set superusers="$guser"    $comment_mark
+password_pbkdf2 $guser $pbkdf2_pass    $comment_mark
+EOF
+)
 
-append_to_file "$tmp_pass_file" "$custom_grub"
-rm -f "$tmp_pass_file"
+run_step "Writing superuser credentials to $custom_grub" bash -c "echo '$auth_block' | sudo tee -a '$custom_grub' >/dev/null"
 
-# Config other menu entries to allow booting without password by default
-for f in /etc/grub.d/*; do
-	[ -f "$f" ] || continue
-	sudo_exec sed -i 's/--unrestricted//g' "$f"
-	sudo_exec sed -i 's/\bmenuentry\b/menuentry --unrestricted /g' "$f"
+# Make default menu entries unrestricted so system boots normally without password
+for script_file in /etc/grub.d/*; do
+    [ -f "$script_file" ] || continue
+    run_step "Setting unrestricted boot for $(basename "$script_file")" bash -c "sudo sed -i 's/--unrestricted//g' '$script_file' && sudo sed -i 's/\bmenuentry\b/menuentry --unrestricted /g' '$script_file'"
 done
 
-# Update GRUB configuration
-echo -e "\e[1mUpdating GRUB...\e[0m"
-sudo_exec update-grub
+# Regenerate GRUB configuration file
+run_step "Regenerating GRUB configuration file" sudo update-grub
