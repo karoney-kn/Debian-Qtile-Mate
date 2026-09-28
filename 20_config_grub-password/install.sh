@@ -13,6 +13,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+
 # Helper function: aligned visual logging output
 run_step() {
     local label="$1"
@@ -32,31 +33,32 @@ run_step() {
 
 echo -e "\e[1mConfiguring GRUB authentication security...\e[0m"
 
-# Prompts for GRUB administrative credentials (Run directly to retain TTY output)
-read -rp "Enter GRUB username: " guser
+# Prompts for GRUB administrative credentials
+
+printf "Enter GRUB username: " >&2
+read -r guser
+
 if [[ ! "$guser" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     echo -e "${RED}ERROR: Invalid username format. Must match ^[a-zA-Z0-9_-]+$${NC}" >&2
     exit 1
 fi
 
-read -rsp "Enter password for $guser user: " gpass
-echo
+printf "Enter password for %s user: " "$guser" >&2
+read -rs gpass
+echo >&2
+
 if [ -z "$gpass" ]; then
     echo -e "${RED}ERROR: Password cannot be empty.${NC}" >&2
     exit 1
 fi
 
 # Generate PBKDF2 hash from provided password
-run_step "Generating GRUB PBKDF2 password hash" bash -c "
-    pbkdf2_pass=\$(echo -e '${gpass}\n${gpass}' | grub-mkpasswd-pbkdf2 | grep 'grub.pbkdf2.*' -o)
-    if [ -z \"\$pbkdf2_pass\" ]; then
-        exit 1
-    fi
-    echo \"\$pbkdf2_pass\" > /tmp/.grub_hash_tmp
-" || exit 1
+pbkdf2_pass="$(echo -e "${gpass}\n${gpass}" | grub-mkpasswd-pbkdf2 | grep "grub.pbkdf2.*" -o)"
 
-pbkdf2_pass="$(cat /tmp/.grub_hash_tmp)"
-rm -f /tmp/.grub_hash_tmp
+if [ -z "$pbkdf2_pass" ]; then
+    echo -e "${RED}ERROR: Failed to generate PBKDF2 password hash.${NC}" >&2
+    exit 1
+fi
 
 # Purge existing custom entries matching the comment marker
 run_step "Purging previous GRUB auth settings" sudo sed -i "/${comment_mark}/Id" "$custom_grub"
