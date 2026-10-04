@@ -43,7 +43,7 @@ if [[ ! "$guser" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     exit 1
 fi
 
-printf "Enter password for %s user: " "$guser" >&2
+printf "Enter password for user %s: " "$guser" >&2
 read -rs gpass
 echo >&2
 

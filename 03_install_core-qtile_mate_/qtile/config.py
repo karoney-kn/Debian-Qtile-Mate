@@ -5,28 +5,12 @@ from libqtile.config import Click, Drag, Group, Key, Match, Screen, ScratchPad, 
 from libqtile.lazy import lazy
 import os
 import subprocess
-from libqtile import bar, layout, widget
 from libqtile.widget import Image # Ensure this is present
 
 from libqtile import hook
 from colors import *
 
-# ─── HiDPI / 4K displays ──────────────────────────────────────────────
-# Qtile doesn't scale, and apps are launched by qtile itself (lazy.spawn),
-# not by autostart.sh — so scaling has to be set here, in qtile's own
-# environment, for those apps to inherit it. If type is tiny on a 4K
-# screen, uncomment this block and restart qtile.
-#
-# Values give ~200%. For ~150% use Xft.dpi 144, drop GDK_SCALE, and set the
-# cursor sizes to 36.
-# subprocess.run(["xrdb", "-merge"], text=True,
-#                input="Xft.dpi: 192\nXcursor.size: 48\n")  # X apps, fonts + cursor
-# os.environ["GDK_SCALE"] = "2"          # GTK app widgets (caja, subl)
-# os.environ["GDK_DPI_SCALE"] = "0.5"    # cancel GTK's double font scaling
-# os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"   # Qt apps follow Xft.dpi
-# os.environ["XCURSOR_SIZE"] = "48"
-# ──────────────────────────────────────────────────────────────────────
-
+# ─── HELPER FUNCTIONS & HOOKS ─────────────────────────────────────────
 def notify_layout():
     """Show current layout in notification"""
     def _notify_layout(qtile):
@@ -53,7 +37,6 @@ def toggle_float_center():
             was_floating = window.floating
             window.toggle_floating()
             if not was_floating and window.floating:
-                # Only resize/center when going from tiled to floating
                 screen = qtile.current_screen
                 width = int(screen.width * 0.70)
                 height = int(screen.height * 0.60)
@@ -123,40 +106,60 @@ def focus_right():
             qtile.current_layout.right()
     return _focus_right
 
-def toggle_treetab():
-    """Toggle between TreeTab (qtile's closest thing to bspwm-tabs) and MonadTall"""
-    def _toggle_treetab(qtile):
-        group = qtile.current_group
-        target = "monadtall" if group.layout.name == "treetab" else "treetab"
-        group.setlayout(target)
-        subprocess.run(["notify-send", "Layout",
-                        "Tree Tab" if target == "treetab" else "Monad Tall",
-                        "-t", "1500", "-u", "low"])
-    return _toggle_treetab
-
 @hook.subscribe.startup_once
 def autostart():
-   home = os.path.expanduser('~/.config/qtile/scripts/autostart.sh')
-   subprocess.run([home])
+    home = os.path.expanduser('~/.config/qtile/scripts/autostart.sh')
+    subprocess.run([home])
 
 @hook.subscribe.startup
 def set_wallpaper():
-   autostart = os.path.expanduser('~/.config/qtile/scripts/autostart.sh')
-   with open(autostart) as f:
-       for line in f:
-           if 'feh' in line:
-               cmd = line.strip().rstrip('&').strip()
-               subprocess.Popen(cmd, shell=True)
+    autostart = os.path.expanduser('~/.config/qtile/scripts/autostart.sh')
+    with open(autostart) as f:
+        for line in f:
+            if 'feh' in line:
+                cmd = line.strip().rstrip('&').strip()
+                subprocess.Popen(cmd, shell=True)
+
+@hook.subscribe.client_new
+def fit_floating_media_players(window):
+    """Automatically fit tall floating video windows to screen height with margins."""
+    media_classes = ["mpv", "vlc", "totem", "celluloid", "qimgv"]
+    
+    wm_class = window.get_wm_class()
+    if wm_class and any(c in wm_class for c in media_classes):
+        window.floating = True
+        screen = window.qtile.current_screen
+        
+        max_h = int(screen.height * 0.85)
+        max_w = int(screen.width * 0.95)
+        
+        w, h = window.get_size() if hasattr(window, "get_size") else (800, 600)
+        
+        if h > max_h or w > max_w:
+            aspect_ratio = w / float(h) if h > 0 else 1.0
+            if h > max_h:
+                h = max_h
+                w = int(h * aspect_ratio)
+            if w > max_w:
+                w = max_w
+                h = int(w / aspect_ratio)
+            
+            window.set_size_floating(w, h)
+        
+        window.center()
 
 
-
+# ─── USER CONSTANTS ───────────────────────────────────────────────────
 mod = "mod4"
 terminal = "mate-terminal"
 browser = "google-chrome"
 whatsapp = "google-chrome --app=https://web.whatsapp.com"
+virtmanager = "virt-manager"
 
 colors, backgroundColor, foregroundColor, workspaceColor, foregroundColorTwo = monokai()
 
+
+# ─── KEYBINDINGS ──────────────────────────────────────────────────────
 keys = [
 
 # === WM CONTROL ===
@@ -170,6 +173,7 @@ keys = [
     Key([mod], "Return", lazy.spawn(terminal), desc="Launch terminal"),
     Key([mod], "w", lazy.spawn(whatsapp), desc="Launch whatsapp"),
     Key([mod], "b", lazy.spawn(browser), desc="Launch browser"),
+    Key([mod], "v", lazy.spawn(virtmanager), desc="Launch Virt Manager"),
     Key([mod, "shift"], "b", lazy.spawn(browser + " -private-window"), desc="Launch browser (private)"),
     Key([mod], "c", lazy.spawn("helium"), desc="Launch Helium"),
     Key([mod, "shift"], "c", lazy.spawn("helium --incognito"), desc="Launch Helium (incognito)"),
@@ -216,7 +220,6 @@ keys = [
 # === LAYOUTS ===
     Key([mod], "Tab", lazy.next_layout(), lazy.function(notify_layout()), desc="Cycle layouts"),
     Key([mod], "t", lazy.layout.toggle_split(), desc="Toggle split direction (BSP)"),
-    #Key([mod], "w", lazy.function(toggle_treetab()), desc="Toggle tab group (TreeTab)"),
     Key([mod], "y", lazy.spawn(os.path.expanduser("~/.config/qtile/scripts/layoutmenu")), desc="Layout menu"),
 
 # === WINDOW STATE ===
@@ -244,64 +247,48 @@ keys = [
     Key([mod], "Print", lazy.spawn("flameshot gui --path " + os.path.expanduser("~/Screenshots/")), desc="Screenshot (region)"),
 ]
 
+
+# ─── GROUPS & SCRATCHPADS ─────────────────────────────────────────────
 groups = [
-    Group('1', label="|  WORK-SPACE[X]  ", layout="treetab"),
-    Group('2', label="|  WORK-SPACE[Y]  |", layout="treetab"),
-    Group('3', label="|  WORK-SPACE[Z]  |", layout="treetab"),
-    Group('4', label="|  PC-STATS  |", layout="treetab"),
+    Group('1', label="|  [R]"),
+    Group('2', label="|  [T]"),
+    Group('3', label="|  [X]"),
+    Group('4', label="|  PC-STATS  |"),
 ]
 
-# Define scratchpads
-# Define scratchpads
 groups.append(ScratchPad("scratchpad", [
-    # Plain terminal scratchpad using mate-terminal
     DropDown("terminal", "mate-terminal", width=0.6, height=0.6, x=0.2, y=0.02, opacity=0.95),
     DropDown("audio", "mate-terminal --class=audio -e pulsemixer", width=0.5, height=0.5, x=0.25, y=0.02, opacity=0.95),
 ]))
 
-
-
 for i in groups:
-    if i.name != "scratchpad":  # Skip scratchpad groups
+    if i.name != "scratchpad":
         keys.extend(
             [
-                # mod1 + letter of group = switch to group
                 Key(
                     [mod],
                     i.name,
                     lazy.group[i.name].toscreen(),
                     desc="Switch to group {}".format(i.name),
                 ),
-                # mod1 + shift + letter of group = switch to & move focused window to group
                 Key(
                     [mod, "shift"],
                     i.name,
                     lazy.window.togroup(i.name, switch_group=True),
                     desc="Switch to & move focused window to group {}".format(i.name),
                 ),
-                # Or, use below if you prefer not to switch to that group.
-                # # mod1 + shift + letter of group = move focused window to group
-                # Key([mod, "shift"], i.name, lazy.window.togroup(i.name),
-                #     desc="move focused window to group {}".format(i.name)),
             ]
         )
 
-# Define layouts and layout themes
-layout_theme = {
-        "margin":5,
-        "border_width": 4,
-        "border_focus": colors[3],
-        "border_normal": colors[1]
-    }
 
-# Layout preference by monitor type:
-# MonadTall - Default layout (master-stack tiling)
-# BSP - Traditional monitors (16:9, 4:3)
-# Columns - Ultrawide monitors (21:9, 32:9)
-# Layout preference by monitor type:
-# TreeTab    - Default layout (Vertical tabbed side panel)
-# MonadTall  - Master-stack tiling
-# BSP        - Traditional monitors (16:9, 4:3)
+# ─── LAYOUTS ──────────────────────────────────────────────────────────
+layout_theme = {
+    "margin": 5,
+    "border_width": 4,
+    "border_focus": colors[3],
+    "border_normal": colors[1]
+}
+
 layouts = [
     layout.TreeTab(
         active_bg=colors[3][0],
@@ -320,35 +307,30 @@ layouts = [
     layout.MonadTall(**layout_theme),
 ]
 
-# Updated widget defaults to match Polybar styling
+
+# ─── BAR & WIDGETS ────────────────────────────────────────────────────
 widget_defaults = dict(
-    font='FreeMono',  # Match Polybar font
+    font='FreeMono',
     background=backgroundColor,
     foreground=foregroundColor,
-    fontsize=14,  # Increased font size
+    fontsize=14,
     padding=4,
 )
 extension_defaults = widget_defaults.copy()
 
-# Custom separator to match Polybar
 def create_separator():
     return widget.TextBox(
         text="|",
-        foreground=foregroundColorTwo,  # disabled color
+        foreground=foregroundColorTwo,
         padding=8,
         fontsize=14
     )
-
 
 screens = [
     Screen(
         top=bar.Bar(
             [
-                # Left modules - Layout icon, workspaces, window title
                 widget.Spacer(length=8),
-                # CurrentLayoutIcon was removed in qtile 0.33+ (forky ships 0.35).
-                # Fall back to CurrentLayout (text) on newer qtile; keep icons
-                # everywhere they're still available (trixie ships 0.31).
                 (widget.CurrentLayoutIcon(
                     custom_icon_paths=[os.path.expanduser("~/.config/qtile/icons/layouts")],
                     foreground=colors[6][0],
@@ -359,34 +341,34 @@ screens = [
                     padding=4
                 )),
 
+                widget.TextBox(
+                    text="|    WORK-SPACE  ",
+                    foreground=foregroundColorTwo,
+                    padding=8,
+                    fontsize=14
+                ),
                 
                 widget.GroupBox(
                     toggle=False,
                     disable_drag=True,
                     use_mouse_wheel=False,
 
-                    # --- Tab Text Muting & Unmuting ---
                     block_highlight_text_color=foregroundColor,  
                     active=foregroundColorTwo,                    
-                    inactive=foregroundColorTwo,                       
+                    inactive=foregroundColorTwo,                        
 
-                    # --- Visual Indicators (Borders) ---
                     highlight_method='line',
                     highlight_color=[backgroundColor, backgroundColor],
 
-                    # --- Active border indicator ---
-                    this_current_screen_border=backgroundColor,#colors[3][0],
+                    this_current_screen_border=backgroundColor,
 
-                    # --- Inactive border indicators ---
                     this_screen_border=colors[1][0],
                     other_current_screen_border=colors[1][0],
                     other_screen_border=backgroundColor,
 
-                    # --- Alert Formatting ---
                     urgent_alert_method='text',
                     urgent_text=colors[10][0],
 
-                    # --- Spacing & Padding ---
                     rounded=False,
                     margin_x=0,
                     margin_y=3,
@@ -395,7 +377,6 @@ screens = [
                     borderwidth=3,
                     hide_unused=False,
                 ),
-
                 
                 widget.WindowName(
                     format='',
@@ -403,9 +384,7 @@ screens = [
                     foreground=foregroundColor,
                     padding=6
                 ),
-
-                # Right modules
-                widget.GenPollText(
+                                widget.GenPollText(
                     func=lambda: " CAPS " if "Caps Lock:   on" in subprocess.run(['xset', 'q'], capture_output=True, text=True).stdout else "",
                     update_interval=1,
                     padding=4,
@@ -413,6 +392,24 @@ screens = [
                     background=colors[10][0],
                 ),
 
+                # === STORAGE & RAM AT TOP ===
+                create_separator(),
+                widget.DF(
+                    partition="/",  # Target mount point (e.g., '/' or '/home')
+                    format="SSD: {uf}{m} / {s}{m}",  # Output format: Remaining / Total
+                    measure="G",  # Measure in Gigabytes ('G'), Megabytes ('M'), or Bytes ('B')
+                    visible_on_warn=False,  # Keep visible at all times
+                    warn_space=10,  # Highlight if remaining space drops below 10 GB
+                    warn_color="ff0000",  # Color applied when below warn_space
+                    update_interval=60,  # Refresh every 60 seconds
+                ),
+
+                create_separator(),
+                widget.Memory(
+                    format='RAM: {MemUsed: .0f}{mm}/{MemTotal: .0f}{mm}',
+                    foreground=colors[4][0],
+                    padding=4
+                ),
                 create_separator(),
                 widget.Battery(
                     format='{char} {percent:2.0%}',
@@ -452,50 +449,84 @@ screens = [
             background=backgroundColor,
             margin=[0, 0, 0, 0],
         ),
+        
+        left=bar.Bar(
+            [
+
+                widget.Spacer(length=10),
+                widget.ThermalSensor(
+                    format='TEMP {temp:.0f}{unit}',
+                    foreground=colors[3][0],
+                    threshold=80,
+                    foreground_alert='ff0000',
+                    update_interval=1.0,
+                ),
+                widget.Spacer(length=10),
+                widget.CPU(
+                    format='CPU {load_percent}%',
+                    foreground=colors[3][0],
+                    update_interval=1.0,
+                ),
+
+                # Push the brand label to the bottom
+                widget.Spacer(),
+
+                # === LAPTOP BRAND AT BOTTOM ===
+                widget.TextBox(
+                    text="LENOVO THINKPAD",  # Replace with your laptop brand (e.g. DELL, HP, ASUS)
+                    foreground=colors[6][0],
+                    fontsize=11,
+                ),
+                widget.Spacer(length=10),
+            ],
+            40,
+            background=backgroundColor,
+            margin=[0, 0, 0, 0],
+        ),
     ),
 ]
 
-# Drag floating layouts.
+
+# ─── MOUSE & FLOATING RULES ───────────────────────────────────────────
 mouse = [
     Drag([mod], "Button1", lazy.window.set_position_floating(), start=lazy.window.get_position()),
     Drag([mod], "Button3", lazy.window.set_size_floating(), start=lazy.window.get_size()),
     Click([mod], "Button2", lazy.window.bring_to_front()),
 ]
 
-
 dgroups_key_binder = None
 dgroups_app_rules = []
 follow_mouse_focus = True
 bring_front_click = False
 cursor_warp = False
+
 floating_layout = layout.Floating(
-border_width=4,
-border_focus=colors[3],
-border_normal=colors[1],
+    border_width=4,
+    border_focus=colors[3],
+    border_normal=colors[1],
     float_rules=[
-        # Run the utility of `xprop` to see the wm class and name of an X client.
         *layout.Floating.default_float_rules,
-        Match(wm_class="qimgv"),  # q image viewer
-        Match(wm_class="nwg-look"),  # nwg-look (GTK theme manager)
-        Match(wm_class="pavucontrol"),  # pavucontrol
-        Match(wm_class="Galculator"),  # calculator
-        Match(wm_class="confirmreset"),  # gitk
-        Match(wm_class="makebranch"),  # gitk
-        Match(wm_class="maketag"),  # gitk
-        Match(wm_class="ssh-askpass"),  # ssh-askpass
-        Match(title="branchdialog"),  # gitk
-        Match(title="pinentry"),  # GPG key password entry
+        Match(wm_class="qimgv"),
+        Match(wm_class="mpv"),
+        Match(wm_class="vlc"),
+        Match(wm_class="totem"),
+        Match(wm_class="celluloid"),
+        Match(wm_class="nwg-look"),
+        Match(wm_class="pavucontrol"),
+        Match(wm_class="Galculator"),
+        Match(wm_class="confirmreset"),
+        Match(wm_class="makebranch"),
+        Match(wm_class="maketag"),
+        Match(wm_class="ssh-askpass"),
+        Match(title="branchdialog"),
+        Match(title="pinentry"),
     ]
 )
+
 auto_fullscreen = True
 focus_on_window_activation = "smart"
 reconfigure_screens = True
-
-# If things like steam games want to auto-minimize themselves when losing
-# focus, should we respect this or not?
 auto_minimize = True
-
-# When using the Wayland backend, this can be used to configure input devices.
 wl_input_rules = None
 
 wmname = "qtile"
